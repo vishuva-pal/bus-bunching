@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MBTA Bus Bunching Radar</title>
+
+  <!-- Tailwind (OK for MVP) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- PapaParse (CSV loader) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+  <!-- Page shell -->
+  <div class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Header / Hero -->
+    <header class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold flex items-center gap-3">
+          <span class="text-sky-400">MBTA Bus Bunching Radar</span>
+          <!-- Source badge -->
+          <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-emerald-900 text-emerald-200 border border-emerald-800">
+            <span class="h-2 w-2 bg-emerald-400 rounded-full"></span>
+            Data source: MBTA V3 API
+          </span>
+          <span id="last-updated" class="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded-full border border-slate-700">
+          Last updated: …
+          </span>
+        </h1>
+        <p class="text-sm md:text-base text-slate-400 mt-1">
+          Rider-focused view of how regularly MBTA buses are arriving right now.
+        </p>
+      </div>
+
+      <!-- Nerd mode toggle -->
+      <label class="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+        <span class="text-slate-300">Nerd mode</span>
+        <div class="relative inline-flex items-center">
+          <input id="nerd-toggle" type="checkbox" class="sr-only">
+          <div
+            class="w-10 h-5 bg-slate-700 rounded-full transition-colors duration-150 peer-checked:bg-sky-500">
+          </div>
+          <div
+            class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-150 peer-checked:translate-x-5">
+          </div>
+        </div>
+      </label>
+    </header>
+
+    <!-- Status bar -->
+    <div id="status-bar" class="bg-blue-900/80 border border-blue-700/60 rounded-lg px-4 py-2 text-sm">
+      <span id="status-text">Loading latest headway scores…</span>
+    </div>
+
+    <!-- Summary card -->
+    <section id="summary-card" class="hidden rounded-xl bg-slate-900/80 border border-slate-800 px-4 py-4">
+      <!-- Status right now -->
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+        <div>
+          <p class="text-xs uppercase tracking-wide text-slate-400">Status right now</p>
+          <p id="summary-route-label" class="text-sm font-medium text-slate-100">
+            <!-- Filled from JS -->
+          </p>
+        </div>
+        <span id="summary-status-chip"
+              class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-200">
+          <!-- Filled from JS -->
+        </span>
+      </div>
+
+      <!-- Big-number metrics -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div>
+          <p id="label-median" class="text-[11px] uppercase tracking-wide text-slate-400">Typical wait</p>
+          <p id="metric-median"
+             class="text-2xl font-semibold text-sky-300 mt-1">
+          </p>
+          <p id="help-median" class="text-xs text-slate-400">
+            What you’ll usually wait between buses right now.
+          </p>
+        </div>
+        <div>
+          <p id="label-mean" class="text-[11px] uppercase tracking-wide text-slate-400">Average wait</p>
+          <p id="metric-mean"
+             class="text-2xl font-semibold text-sky-300 mt-1">
+          </p>
+          <p id="help-mean" class="text-xs text-slate-400">
+            Average time between buses over all recent trips.
+          </p>
+        </div>
+        <div>
+          <p id="label-std" class="text-[11px] uppercase tracking-wide text-slate-400">How steady it is</p>
+          <p id="metric-std"
+             class="text-2xl font-semibold text-sky-300 mt-1">
+          </p>
+          <p id="help-std" class="text-xs text-slate-400">
+            Smaller numbers = buses spaced out more evenly.
+          </p>
+        </div>
+        <div>
+          <p id="label-score" class="text-[11px] uppercase tracking-wide text-slate-400">Reliability score</p>
+          <p id="metric-score"
+             class="text-2xl font-semibold mt-1">
+          </p>
+          <p id="metric-label" class="text-xs font-semibold mt-1">
+            <!-- Friendly label -->
+          </p>
+          <p id="help-score" class="text-xs text-slate-400 mt-1">
+            How close the service is to the planned spacing.
+          </p>
+        </div>
+      </div>
+
+      <!-- Rider-friendly text -->
+      <p id="summary-rider-text" class="mt-4 text-xs text-slate-400">
+        <!-- Filled from JS -->
+      </p>
+    </section>
+
+    <!-- Main control card -->
+    <section
+      class="rounded-xl bg-slate-900/80 border border-slate-800 p-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+
+      <!-- Left side: controls -->
+      <div class="space-y-2 md:w-1/2">
+        <p class="text-xs uppercase tracking-wide text-slate-400">
+          Check a specific route
+        </p>
+        <p class="text-xs text-slate-500 mb-1">
+          Pick a route &amp; direction to inspect current headways.
+        </p>
+
+        <div class="flex flex-wrap gap-2">
+          <select id="route-select" disabled
+                  class="text-sm text-slate-900 bg-slate-100 rounded-md px-3 py-2 min-w-[5rem]">
+          </select>
+
+          <select id="direction-select" disabled
+                  class="text-sm text-slate-900 bg-slate-100 rounded-md px-3 py-2 min-w-[7rem]">
+          </select>
+
+          <button id="analyze-btn" disabled
+                  class="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white text-sm font-medium px-4 py-2 rounded-md transition">
+            Analyze
+          </button>
+        </div>
+      </div>
+
+      <!-- Right side: Nerd legend (NERD MODE ONLY, now with colours) -->
+      <div id="nerd-legend"
+           class="nerd-only hidden md:w-1/2 mt-2 md:mt-0 text-xs bg-slate-900 border border-slate-800 rounded-lg px-4 py-3">
+        <p class="font-semibold mb-2 text-slate-200">Legend</p>
+
+        <!-- Metric definitions -->
+        <ul class="list-disc list-inside space-y-1 text-slate-400 mb-3">
+          <li><span class="font-semibold">Median / mean gap</span> – minutes between buses compared with the target headway.</li>
+          <li><span class="font-semibold">Std dev</span> – how much the gaps fluctuate; higher = more uneven service.</li>
+          <li><span class="font-semibold">Health score (0–1+)</span> – 1.0+ is very regular, values closer to 0 mean bunching or big gaps.</li>
+        </ul>
+
+        <!-- Colour legend -->
+        <div class="space-y-1">
+          <p class="font-semibold text-slate-200">Colour key</p>
+
+          <div class="flex items-center gap-2">
+            <span class="inline-flex h-3 w-3 rounded-full bg-emerald-500"></span>
+            <span class="text-slate-400 text-xs">
+              <span class="font-semibold text-emerald-200">Green</span> – very reliable / mostly regular service.
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="inline-flex h-3 w-3 rounded-full bg-amber-500"></span>
+            <span class="text-slate-400 text-xs">
+              <span class="font-semibold text-amber-200">Amber</span> – uneven gaps; watch for bunching.
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+            <span class="text-slate-400 text-xs">
+              <span class="font-semibold text-red-200">Red</span> – high bunching risk or very uneven waits.
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="inline-flex h-3 w-3 rounded-full bg-slate-500"></span>
+            <span class="text-slate-400 text-xs">
+              <span class="font-semibold text-slate-200">Grey</span> – not enough data yet for this route/direction.
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- “How this MVP works” (NERD MODE ONLY) -->
+    <section
+      id="mvp-explainer"
+      class="nerd-only hidden rounded-xl bg-slate-900/80 border border-slate-800 px-4 py-4 text-xs md:text-sm space-y-3">
+      <h2 class="font-semibold text-slate-100">How this MVP works</h2>
+      <ol class="list-decimal list-inside space-y-1 text-slate-400">
+        <li>An Airflow DAG hits the MBTA <code class="font-mono text-sky-300">/vehicles</code> API every N minutes and saves raw snapshots (bronze).</li>
+        <li>A transform flattens each snapshot into a <code class="font-mono text-sky-300">vehicles_*.csv</code> file (silver).</li>
+        <li>A headway engine computes gaps per <code class="font-mono text-sky-300">route_id, direction_id</code> pair and produces a Headway Health Score (gold).</li>
+        <li>A small sync script copies the latest CSVs into <code class="font-mono text-sky-300">site/data</code>, and this static UI reads them directly in your browser.</li>
+      </ol>
+    </section>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
