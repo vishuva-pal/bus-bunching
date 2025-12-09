@@ -6,9 +6,8 @@ from typing import Tuple, Optional
 import pandas as pd
 
 
-GOLD_SCORES_DIR = Path(
-    r"C:\Users\vishu\Documents\GitHub\bus-bunching\airflow\dags\data\gold\headway_scores"
-)
+BASE_DIR = Path(__file__).resolve().parents[2] 
+GOLD_SCORES_DIR = BASE_DIR / "dags" / "data" / "gold" / "headway_scores"
 
 def _latest_scores_file(scores_dir: Path) -> Path:
     scores_dir.mkdir(parents=True, exist_ok=True)
